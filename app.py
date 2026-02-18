@@ -11,7 +11,7 @@ CLIENT_ID = os.getenv("DATABRICKS_CLIENT_ID")
 CLIENT_SECRET = os.getenv("DATABRICKS_CLIENT_SECRET")
 
 # Use the HTTP_PATH you just extracted
-HTTP_PATH = "/sql/warehouses/bad4090f536f7457"
+HTTP_PATH = "/sql/1.0/warehouses/bad4090f536f7457"
 
 # Connect to Databricks SQL Warehouse
 conn = sql.connect(
