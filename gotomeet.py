@@ -1,27 +1,28 @@
 import streamlit as st
 import pandas as pd
-from pyspark.sql import SparkSession
+from databricks import sql
 
-# Start Spark Session
-spark = SparkSession.builder.getOrCreate()
-
-# Title
 st.title("📊 GoToMeeting Dashboard")
 
-st.markdown("Silver + Gold Layer Analytics App")
+# Connect to Databricks SQL Warehouse
+conn = sql.connect(
+    server_hostname="dbc-54ac37fe-c0ec.cloud.databricks.com",
+    http_path="/sql/1.0/warehouses/<your_warehouse_id>",
+    access_token="<your_databricks_pat>"
+)
 
-# ------------------------------
-# Silver Layer Table
-# ------------------------------
-st.header("🧾 Silver Layer: Student Details")
+# Silver Layer Query
+st.header("Silver Layer: Student Details")
 
-silver_df = spark.table("gotomeeting_silver.student_details")
-st.dataframe(silver_df.toPandas())
+query1 = "SELECT * FROM gotomeeting_silver.student_details LIMIT 20"
 
-# ------------------------------
-# Gold Layer KPI Table
-# ------------------------------
-st.header("🏆 Gold Layer KPI: Duration per Attendee")
+silver_df = pd.read_sql(query1, conn)
+st.dataframe(silver_df)
 
-gold_df = spark.table("gotomeeting_gold.attendee_duration_kpi")
-st.dataframe(gold_df.toPandas())
+# Gold KPI Query
+st.header("Gold Layer KPI: Duration per Attendee")
+
+query2 = "SELECT * FROM gotomeeting_gold.attendee_duration_kpi"
+
+gold_df = pd.read_sql(query2, conn)
+st.dataframe(gold_df)
