@@ -1,36 +1,61 @@
-import streamlit as st
-import pandas as pd
 import os
+import streamlit as st
 from databricks import sql
+import pandas as pd
 
-st.title("📊 GoToMeeting Dashboard")
+# ----------------------------
+# Page Title
+# ----------------------------
+st.title("✅ GoToMeeting Attendance KPI Dashboard")
 
-# Get environment variables from Databricks App
-HOST = os.getenv("DATABRICKS_HOST")
-CLIENT_ID = os.getenv("DATABRICKS_CLIENT_ID")
-CLIENT_SECRET = os.getenv("DATABRICKS_CLIENT_SECRET")
+st.success("Databricks App is Running Successfully 🎉")
 
-# Use the HTTP_PATH you just extracted
-HTTP_PATH = "/sql/1.0/warehouses/bad4090f536f7457"
+# ----------------------------
+# Databricks SQL Warehouse Connection
+# ----------------------------
+HOST = os.environ["DATABRICKS_HOST"]
 
-# Connect to Databricks SQL Warehouse
-conn = sql.connect(
-    server_hostname=HOST,
-    http_path=HTTP_PATH,
-    auth_type="oauth",
-    client_id=CLIENT_ID,
-    client_secret=CLIENT_SECRET
-)
+HTTP_PATH = "/sql/warehouses/bad4090f536f7457"
 
-# Silver Table
-st.header("Silver Layer: Student Details")
-silver_query = "SELECT * FROM gotomeeting_silver.student_details LIMIT 50"
-silver_df = pd.read_sql(silver_query, conn)
-st.dataframe(silver_df)
+CLIENT_ID = os.environ["DATABRICKS_CLIENT_ID"]
+CLIENT_SECRET = os.environ["DATABRICKS_CLIENT_SECRET"]
 
-# Gold KPI Table
-st.header("Gold Layer KPI: Duration per Attendee")
-gold_query = "SELECT * FROM gotomeeting_gold.attendee_duration_kpi"
-gold_df = pd.read_sql(gold_query, conn)
-st.dataframe(gold_df)
+# ----------------------------
+# Load Gold KPI Table
+# ----------------------------
+st.header("📌 Gold Layer KPI Table: attendance_kpi")
 
+try:
+    # Connect to SQL Warehouse
+    connection = sql.connect(
+        server_hostname=HOST,
+        http_path=HTTP_PATH,
+        auth_type="oauth",
+        client_id=CLIENT_ID,
+        client_secret=CLIENT_SECRET
+    )
+
+    st.success("✅ Connected to Databricks SQL Warehouse")
+
+    # Query Gold Table
+    query = "SELECT * FROM gold.attendance_kpi"
+
+    df = pd.read_sql(query, connection)
+
+    # Display Table
+    st.dataframe(df)
+
+    # ----------------------------
+    # KPI Summary Metrics
+    # ----------------------------
+    st.subheader("📊 KPI Summary")
+
+    col1, col2, col3 = st.columns(3)
+
+    col1.metric("Total Records", len(df))
+    col2.metric("Total Columns", len(df.columns))
+    col3.metric("Table Name", "gold.attendance_kpi")
+
+except Exception as e:
+    st.error("❌ Failed to Load KPI Table")
+    st.code(str(e))
