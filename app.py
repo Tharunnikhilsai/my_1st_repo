@@ -1,56 +1,65 @@
 import streamlit as st
-import pandas as pd
 from databricks import sql
+import pandas as pd
 
-st.set_page_config(page_title="GoToMeeting Gold KPI", layout="wide")
+st.title("📅 Candidate Attendance Duration Dashboard")
 
-st.title("✅ GoToMeeting Gold KPI Dashboard")
-
-# -------------------------
-# TABLE SELECTION
-# -------------------------
-
-table_name = st.selectbox(
-    "Choose KPI Table:",
-    [
-        "final_attendence",
-        "attendee_duration_kpi",
-        "total_student_duration"
-    ]
+connection = sql.connect(
+    server_hostname="dbc-54ac37fe-c0ec.cloud.databricks.com",
+    http_path="/sql/1.0/warehouses/YOUR_REAL_ID",
+    access_token="dapi_REAL_TOKEN"
 )
 
-# -------------------------
-# LOAD DATA BUTTON
-# -------------------------
+# Date range
+col1, col2 = st.columns(2)
 
-if st.button("Load Table Data"):
+with col1:
+    start_date = st.date_input("Start Date")
 
-    try:
-        st.info("Running query... please wait")
+with col2:
+    end_date = st.date_input("End Date")
 
-        # Create connection
-        connection = sql.connect(
-            server_hostname=st.secrets["DATABRICKS_SERVER_HOSTNAME"],
-            http_path=st.secrets["DATABRICKS_HTTP_PATH"],
-            access_token=st.secrets["DATABRICKS_TOKEN"]
-        )
+# Load candidate list
+with connection.cursor() as cursor:
+    cursor.execute("""
+        SELECT DISTINCT attendee_name
+        FROM workspace.gotomeeting_silver.student_details
+        ORDER BY attendee_name
+    """)
+    candidates = [row[0] for row in cursor.fetchall()]
 
-        # Query
-        query = f"""
-        SELECT *
-        FROM workspace.gotomeeting_gold.{table_name}
-        LIMIT 100
-        """
+selected_candidate = st.selectbox("Select Candidate", candidates)
 
-        # Execute query
-        df = pd.read_sql(query, connection)
+if st.button("Load Data"):
 
-        # Display
+    query = f"""
+        SELECT 
+            attendee_name,
+            meeting_date,
+            duration_minutes
+        FROM workspace.gotomeeting_silver.student_details
+        WHERE attendee_name = '{selected_candidate}'
+        AND meeting_date BETWEEN '{start_date}' AND '{end_date}'
+        ORDER BY meeting_date
+    """
+
+    with connection.cursor() as cursor:
+        cursor.execute(query)
+        result = cursor.fetchall()
+        columns = [desc[0] for desc in cursor.description]
+
+    df = pd.DataFrame(result, columns=columns)
+
+    if not df.empty:
         st.success("Data Loaded Successfully")
-        st.dataframe(df)
 
-        connection.close()
+        total_duration = df["duration_minutes"].sum()
 
-    except Exception as e:
-        st.error("Query Failed")
-        st.code(str(e))
+        st.metric("Total Duration (Minutes)", round(total_duration, 2))
+
+        st.line_chart(df.set_index("meeting_date")["duration_minutes"])
+
+        st.dataframe(df, use_container_width=True)
+
+    else:
+        st.warning("No data found in selected date range.")
