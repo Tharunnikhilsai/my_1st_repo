@@ -1,65 +1,93 @@
 import streamlit as st
-from databricks import sql
 import pandas as pd
+from databricks import sql
+from datetime import date
+
+# -----------------------------
+# PAGE CONFIG
+# -----------------------------
+st.set_page_config(page_title="Candidate Attendance Dashboard", layout="wide")
 
 st.title("📅 Candidate Attendance Duration Dashboard")
 
-connection = sql.connect(
-    server_hostname="dbc-54ac37fe-c0ec.cloud.databricks.com",
-    http_path="/sql/1.0/warehouses/YOUR_REAL_ID",
-    access_token="dapi_REAL_TOKEN"
-)
+# -----------------------------
+# CONNECTION FUNCTION
+# -----------------------------
+@st.cache_resource
+def create_connection():
+    try:
+        connection = sql.connect(
+            server_hostname="dbc-54ac37fe-c0ec.cloud.databricks.com",
+            http_path="/sql/1.0/warehouses/YOUR_WAREHOUSE_ID",   # 🔴 REPLACE THIS
+            access_token="dapi-YOUR_ACCESS_TOKEN"               # 🔴 REPLACE THIS
+        )
+        return connection
+    except Exception as e:
+        st.error("❌ Failed to connect to Databricks")
+        st.code(str(e))
+        st.stop()
 
-# Date range
+connection = create_connection()
+
+# -----------------------------
+# DATE FILTERS
+# -----------------------------
 col1, col2 = st.columns(2)
 
 with col1:
-    start_date = st.date_input("Start Date")
+    start_date = st.date_input("Start Date", date(2026, 1, 1))
 
 with col2:
-    end_date = st.date_input("End Date")
+    end_date = st.date_input("End Date", date.today())
 
-# Load candidate list
-with connection.cursor() as cursor:
-    cursor.execute("""
-        SELECT DISTINCT attendee_name
-        FROM workspace.gotomeeting_silver.student_details
-        ORDER BY attendee_name
-    """)
-    candidates = [row[0] for row in cursor.fetchall()]
+# -----------------------------
+# LOAD BUTTON
+# -----------------------------
+if st.button("🔍 Load Attendance Data"):
 
-selected_candidate = st.selectbox("Select Candidate", candidates)
-
-if st.button("Load Data"):
+    if start_date > end_date:
+        st.warning("Start date cannot be greater than End date")
+        st.stop()
 
     query = f"""
-        SELECT 
+        SELECT
             attendee_name,
-            meeting_date,
-            duration_minutes
-        FROM workspace.gotomeeting_silver.student_details
-        WHERE attendee_name = '{selected_candidate}'
-        AND meeting_date BETWEEN '{start_date}' AND '{end_date}'
-        ORDER BY meeting_date
+            SUM(total_duration_hours) AS total_hours,
+            SUM(classes_attended) AS total_classes_attended,
+            AVG(attendance_percentage) AS avg_attendance
+        FROM workspace.gotomeeting_gold.final_attendance
+        WHERE meeting_date BETWEEN '{start_date}' AND '{end_date}'
+        GROUP BY attendee_name
+        ORDER BY total_hours DESC
     """
 
-    with connection.cursor() as cursor:
-        cursor.execute(query)
-        result = cursor.fetchall()
-        columns = [desc[0] for desc in cursor.description]
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute(query)
+            result = cursor.fetchall()
+            columns = [col[0] for col in cursor.description]
 
-    df = pd.DataFrame(result, columns=columns)
+        df = pd.DataFrame(result, columns=columns)
 
-    if not df.empty:
-        st.success("Data Loaded Successfully")
+        if df.empty:
+            st.info("No data available for selected date range.")
+        else:
+            st.success("✅ Data Loaded Successfully")
 
-        total_duration = df["duration_minutes"].sum()
+            # KPI Metrics
+            total_candidates = df.shape[0]
+            total_hours = df["total_hours"].sum()
 
-        st.metric("Total Duration (Minutes)", round(total_duration, 2))
+            kpi1, kpi2 = st.columns(2)
+            kpi1.metric("Total Candidates", total_candidates)
+            kpi2.metric("Total Duration Hours", round(total_hours, 2))
 
-        st.line_chart(df.set_index("meeting_date")["duration_minutes"])
+            st.divider()
 
-        st.dataframe(df, use_container_width=True)
+            st.subheader("Candidate-wise Attendance Summary")
+            st.dataframe(df, use_container_width=True)
 
-    else:
-        st.warning("No data found in selected date range.")
+    except Exception as e:
+        st.error("❌ Query Execution Failed")
+        st.code(str(e))
+        
